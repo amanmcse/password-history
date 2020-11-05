@@ -33,10 +33,9 @@ namespace password_history.Controllers
         [HttpPost]
         public async Task<ActionResult> GetAsync()
         {
-            StringCollection passwords = null;
-
             var client = new SecretClient(new Uri(kvUri), new DefaultAzureCredential());
             KeyVaultSecret secret = null;
+
             string returnValue = string.Empty;
 
             string input = null;
@@ -72,14 +71,40 @@ namespace password_history.Controllers
                 return StatusCode((int)HttpStatusCode.Conflict, new B2CResponseModel("The 'password' parameter is null or empty", HttpStatusCode.Conflict));
             }
 
-            // Trim the password
-            if (inputClaims.password.Length > 55)
-                inputClaims.password = inputClaims.password.Substring(0, 55);
-
             try
             {
                 // Try to get the secret
-                secret = await client.GetSecretAsync(inputClaims.userId);
+                List<Passwords> passwords = new List<Passwords>();
+
+                await foreach (SecretProperties secretVersion in client.GetPropertiesOfSecretVersionsAsync(inputClaims.userId))
+                {
+                    passwords.Add(new Passwords() { Version = secretVersion.Version, CreatedOn = secretVersion.CreatedOn });
+                }
+
+                // Sort the history by date decsending
+                passwords = passwords.OrderByDescending(x => x.CreatedOn).ToList();
+
+                int i = 0;
+                foreach (var item in passwords)
+                {
+                    i++;
+
+                    if (i <= 4)
+                    {
+                        secret = await client.GetSecretAsync(inputClaims.userId, item.Version);
+                        // Check if the password already in used
+                        if (secret.Value == inputClaims.password)
+                        {
+                            _logger.LogInformation("Secret {userId} found, returning error message ot the user.");
+                            return StatusCode((int)HttpStatusCode.Conflict, new B2CResponseModel("Please make sure the password you enter have never been used before.", HttpStatusCode.Conflict));
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+
             }
             catch (RequestFailedException)
             {
@@ -90,58 +115,11 @@ namespace password_history.Controllers
                 _logger.LogInformation(ex.Message);
             }
 
-            if (secret != null)
-            {
-                try
-                {
-                    // If secret found, try to deserialize it
-                    passwords = JsonConvert.DeserializeObject<StringCollection>(secret.Value);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning($"Secret {inputClaims.userId} can't be deserialized.");
-                }
-            }
-
-            // If both the secret not found, or can't be deserialized
-            if (passwords == null)
-            {
-                passwords = new StringCollection();
-                _logger.LogInformation("Creating new password collection for {userId}");
-            }
-
-            // Check if the password already in used
-            if (passwords.Contains(inputClaims.password))
-            {
-                _logger.LogInformation("Secret {userId} found, returning error message ot the user.");
-                return StatusCode((int)HttpStatusCode.Conflict, new B2CResponseModel("Please make sure the password you enter have never been used before.", HttpStatusCode.Conflict));
-            }
-
-            // Add the new password at the begining of the collection
-            passwords.Insert(0, inputClaims.password);
-
-            // Calculate the collection length
-            int passwordsLength = 4;
-
-            if (passwords.Count < 4)
-            {
-                passwordsLength = passwords.Count;
-            }
-            _logger.LogInformation("Secret {userId} collection length {passwordsLength}.");
-
-            // Take the first 4 elements
-            StringCollection passwordsToPersist = new StringCollection();
-            for (int i = 0; i < passwordsLength; i++)
-            {
-                passwordsToPersist.Add(passwords[i]);
-            }
-
-            string json = JsonConvert.SerializeObject(passwordsToPersist);
 
             try
             {
                 // Try to update the secret
-                KeyVaultSecret persistedSecret = await client.SetSecretAsync(inputClaims.userId, json);
+                KeyVaultSecret persistedSecret = await client.SetSecretAsync(inputClaims.userId, inputClaims.password);
             }
             catch (Exception ex)
             {
@@ -153,6 +131,13 @@ namespace password_history.Controllers
             return Ok();
         }
 
+    }
+
+    public class Passwords
+    {
+        public string Version { get; set; }
+        public string password { get; set; }
+        public DateTimeOffset? CreatedOn { get; set; }
     }
 
     public class InputClaimsModel
