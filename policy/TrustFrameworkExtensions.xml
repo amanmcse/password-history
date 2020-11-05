@@ -1,41 +1,39 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
-<TrustFrameworkPolicy xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+﻿<TrustFrameworkPolicy xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
   xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-  xmlns="http://schemas.microsoft.com/online/cpim/schemas/2013/06" PolicySchemaVersion="0.3.0.0" TenantId="yourtenant.onmicrosoft.com" PolicyId="B2C_1A_TrustFrameworkExtensions_with_password_history" PublicPolicyUri="http://yourtenant.onmicrosoft.com/B2C_1A_TrustFrameworkExtensions_with_password_history">
-
+  xmlns="http://schemas.microsoft.com/online/cpim/schemas/2013/06" PolicySchemaVersion="0.3.0.0" TenantId="yourtenant.onmicrosoft.com" PolicyId="B2C_1A_TrustFrameworkExtensions_with_password_history" PublicPolicyUri="http://yourtenant.onmicrosoft.com/B2C_1A_TrustFrameworkExtensions_with_password_history" TenantObjectId="84d5d499-6212-4bf7-8c02-3c8a6fe4306b">
   <BasePolicy>
     <TenantId>yourtenant.onmicrosoft.com</TenantId>
     <PolicyId>B2C_1A_TrustFrameworkExtensions</PolicyId>
   </BasePolicy>
-
   <BuildingBlocks>
     <ClaimsSchema>
       <!--Sample: Stores the message to dispaly to the user-->
       <ClaimType Id="userMessage">
-        <DisplayName/>
         <DataType>string</DataType>
         <UserHelpText>Add help text here</UserHelpText>
         <UserInputType>Paragraph</UserInputType>
       </ClaimType>
-
       <!--Sample: The system current date and time-->
       <ClaimType Id="currentDateTime">
         <DisplayName>Current date and time</DisplayName>
         <DataType>dateTime</DataType>
         <UserHelpText>Current date and time</UserHelpText>
       </ClaimType>
-
       <!--Sample: The last time user reset the password-->
       <ClaimType Id="extension_passwordResetOn">
         <DisplayName>Password reset on</DisplayName>
         <DataType>dateTime</DataType>
         <UserHelpText>The last time user reset the password</UserHelpText>
       </ClaimType>
-
       <!--Sample: Indicates whether password reset is required, based on date comparison -->
       <ClaimType Id="isPasswordResetOnGreaterThanNow">
-        <DisplayName>Indicates whether password reset is required</DisplayName>
+        <DisplayName>Indicates whether password can be changed</DisplayName>
         <DataType>boolean</DataType>
+        <UserInputType>Paragraph</UserInputType>
+      </ClaimType>
+      <ClaimType Id="salt">
+        <DisplayName>salt</DisplayName>
+        <DataType>string</DataType>
         <UserInputType>Paragraph</UserInputType>
       </ClaimType>
     </ClaimsSchema>
@@ -55,17 +53,17 @@
         </OutputClaims>
       </ClaimsTransformation>
 
-      <!--Sample: Compare the dates and check if password reset is required -->
+      <!--Sample: Check if the  passwordResetOn + the tiem span is later than now.
+        If it's later, user can't reset the password (returns true)
+        If it's ealier, user can reset the password (return false)-->
       <ClaimsTransformation Id="ComparePasswordResetOnWithCurrentDateTime" TransformationMethod="DateTimeComparison">
         <InputClaims>
           <InputClaim ClaimTypeReferenceId="extension_passwordResetOn" TransformationClaimType="firstDateTime" />
           <InputClaim ClaimTypeReferenceId="currentDateTime" TransformationClaimType="secondDateTime" />
         </InputClaims>
         <InputParameters>
-          <!--Sample: Check if the last time user reset the password, plus the timespan, is later the today.
-              If it later, user can't reset the password. -->
           <InputParameter Id="operator" DataType="string" Value="later than" />
-          <!--Deom Action Required: Change the time span according to 1 or 2 hours (in seconds)-->
+          <!--Deom Action Required: Change the time span according to 60 or 90 days (in seconds)-->
           <InputParameter Id="timeSpanInSeconds" DataType="int" Value="80" />
         </InputParameters>
         <OutputClaims>
@@ -73,17 +71,31 @@
         </OutputClaims>
       </ClaimsTransformation>
 
+      <!--Set the password reset error message-->
       <ClaimsTransformation Id="PasswordResetErrorMessage" TransformationMethod="CreateStringClaim">
         <InputParameters>
-          <InputParameter Id="value" DataType="string" Value="You can't reset the password within 2 hours."/>
+          <InputParameter Id="value" DataType="string" Value="You can't reset the password within 2 hours." />
         </InputParameters>
         <OutputClaims>
-          <OutputClaim ClaimTypeReferenceId="userMessage" TransformationClaimType="createdClaim"/>
+          <OutputClaim ClaimTypeReferenceId="userMessage" TransformationClaimType="createdClaim" />
+        </OutputClaims>
+      </ClaimsTransformation>
+
+      <!--HASH the password before sending to the REST API-->
+      <ClaimsTransformation Id="HashPassword" TransformationMethod="Hash">
+        <InputClaims>
+          <InputClaim ClaimTypeReferenceId="newPassword" TransformationClaimType="plaintext" />
+          <InputClaim ClaimTypeReferenceId="salt" TransformationClaimType="salt" />
+        </InputClaims>
+        <InputParameters>
+          <InputParameter Id="randomizerSecret" DataType="string" Value="B2C_1A_AccountTransformSecret" />
+        </InputParameters>
+        <OutputClaims>
+          <OutputClaim ClaimTypeReferenceId="newPassword" TransformationClaimType="hash" />
         </OutputClaims>
       </ClaimsTransformation>
     </ClaimsTransformations>
   </BuildingBlocks>
-
   <ClaimsProviders>
     <ClaimsProvider>
       <DisplayName>Custom REST API</DisplayName>
@@ -98,6 +110,9 @@
             <!-- REMOVE the following line in production environments -->
             <Item Key="AllowInsecureAuthInProduction">true</Item>
           </Metadata>
+          <InputClaimsTransformations>
+            <InputClaimsTransformation ReferenceId="HashPassword" />
+          </InputClaimsTransformations>
           <InputClaims>
             <InputClaim ClaimTypeReferenceId="objectId" PartnerClaimType="userId" />
             <InputClaim ClaimTypeReferenceId="newPassword" PartnerClaimType="password" />
@@ -109,161 +124,189 @@
     <ClaimsProvider>
       <DisplayName>Self-Asserted</DisplayName>
       <TechnicalProfiles>
-        <!--Sample: Display the welcome page-->
+        <!--Sample: Display the password reset error page-->
         <TechnicalProfile Id="SelfAsserted-PasswordResetError">
           <DisplayName>Welcome to FIDO enrollment</DisplayName>
-          <Protocol Name="Proprietary" Handler="Web.TPEngine.Providers.SelfAssertedAttributeProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"/>
+          <Protocol Name="Proprietary" Handler="Web.TPEngine.Providers.SelfAssertedAttributeProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" />
           <Metadata>
             <Item Key="ContentDefinitionReferenceId">api.selfasserted</Item>
           </Metadata>
           <InputClaimsTransformations>
-            <InputClaimsTransformation ReferenceId="PasswordResetErrorMessage"/>
+            <InputClaimsTransformation ReferenceId="PasswordResetErrorMessage" />
           </InputClaimsTransformations>
           <InputClaims>
-            <InputClaim ClaimTypeReferenceId="isPasswordResetOnGreaterThanNow"/>
-            <InputClaim ClaimTypeReferenceId="userMessage"/>
+            <InputClaim ClaimTypeReferenceId="isPasswordResetOnGreaterThanNow" />
+            <InputClaim ClaimTypeReferenceId="userMessage" />
           </InputClaims>
           <OutputClaims>
-            <OutputClaim ClaimTypeReferenceId="isPasswordResetOnGreaterThanNow"/>
-            <OutputClaim ClaimTypeReferenceId="userMessage"/>
+            <OutputClaim ClaimTypeReferenceId="isPasswordResetOnGreaterThanNow" />
+            <OutputClaim ClaimTypeReferenceId="userMessage" />
           </OutputClaims>
-          <UseTechnicalProfileForSessionManagement ReferenceId="SM-Noop"/>
+          <UseTechnicalProfileForSessionManagement ReferenceId="SM-Noop" />
         </TechnicalProfile>
       </TechnicalProfiles>
     </ClaimsProvider>
     <ClaimsProvider>
       <DisplayName>Local Account</DisplayName>
       <TechnicalProfiles>
+        <!--For the sign-up we add a call to the REST API validation technical profile-->
         <TechnicalProfile Id="LocalAccountSignUpWithLogonEmailWithPasswordHistory">
           <DisplayName>Email signup</DisplayName>
-          <Protocol Name="Proprietary" Handler="Web.TPEngine.Providers.SelfAssertedAttributeProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null"/>
+          <Protocol Name="Proprietary" Handler="Web.TPEngine.Providers.SelfAssertedAttributeProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" />
           <Metadata>
             <Item Key="IpAddressClaimReferenceId">IpAddress</Item>
             <Item Key="ContentDefinitionReferenceId">api.localaccountsignup</Item>
             <Item Key="language.button_continue">Create</Item>
           </Metadata>
           <CryptographicKeys>
-            <Key Id="issuer_secret" StorageReferenceId="B2C_1A_TokenSigningKeyContainer"/>
+            <Key Id="issuer_secret" StorageReferenceId="B2C_1A_TokenSigningKeyContainer" />
           </CryptographicKeys>
           <InputClaims>
-            <InputClaim ClaimTypeReferenceId="email"/>
+            <InputClaim ClaimTypeReferenceId="email" />
           </InputClaims>
           <OutputClaims>
-            <OutputClaim ClaimTypeReferenceId="objectId"/>
-            <OutputClaim ClaimTypeReferenceId="email" PartnerClaimType="Verified.Email" Required="true"/>
-            <OutputClaim ClaimTypeReferenceId="newPassword" Required="true"/>
-            <OutputClaim ClaimTypeReferenceId="reenterPassword" Required="true"/>
-            <OutputClaim ClaimTypeReferenceId="executed-SelfAsserted-Input" DefaultValue="true"/>
-            <OutputClaim ClaimTypeReferenceId="authenticationSource"/>
-            <OutputClaim ClaimTypeReferenceId="newUser"/>
-
+            <OutputClaim ClaimTypeReferenceId="objectId" />
+            <OutputClaim ClaimTypeReferenceId="email" PartnerClaimType="Verified.Email" Required="true" />
+            <OutputClaim ClaimTypeReferenceId="newPassword" Required="true" />
+            <OutputClaim ClaimTypeReferenceId="reenterPassword" Required="true" />
+            <OutputClaim ClaimTypeReferenceId="executed-SelfAsserted-Input" DefaultValue="true" />
+            <OutputClaim ClaimTypeReferenceId="authenticationSource" />
+            <OutputClaim ClaimTypeReferenceId="newUser" />
             <!-- Optional claims, to be collected from the user -->
-            <OutputClaim ClaimTypeReferenceId="displayName"/>
-            <OutputClaim ClaimTypeReferenceId="givenName"/>
-            <OutputClaim ClaimTypeReferenceId="surName"/>
+            <OutputClaim ClaimTypeReferenceId="displayName" />
+            <OutputClaim ClaimTypeReferenceId="givenName" />
+            <OutputClaim ClaimTypeReferenceId="surName" />
           </OutputClaims>
           <ValidationTechnicalProfiles>
-            <ValidationTechnicalProfile ReferenceId="AAD-UserWriteUsingLogonEmail"/>
-            <ValidationTechnicalProfile ReferenceId="REST-PasswordHistory"/>
+            <ValidationTechnicalProfile ReferenceId="AAD-UserWriteUsingLogonEmail" />
+            <ValidationTechnicalProfile ReferenceId="REST-PasswordHistory" />
           </ValidationTechnicalProfiles>
-          <UseTechnicalProfileForSessionManagement ReferenceId="SM-AAD"/>
+          <UseTechnicalProfileForSessionManagement ReferenceId="SM-AAD" />
         </TechnicalProfile>
+
+        <!--(Self-Asserted) Read the account by email address (used by password reset flow)-->
         <TechnicalProfile Id="LocalAccountDiscoveryUsingEmailAddress">
           <Metadata>
-            <!-- REMOVE the following line in production environments -->
             <Item Key="EnforceEmailVerification">false</Item>
           </Metadata>
           <OutputClaims>
-            <OutputClaim ClaimTypeReferenceId="isPasswordResetOnGreaterThanNow" />
+            <OutputClaim ClaimTypeReferenceId="extension_passwordResetOn" />
           </OutputClaims>
         </TechnicalProfile>
+
+
+        <!--(Self-Asserted) On collecting the new password, make a call to the REST API-->
         <TechnicalProfile Id="LocalAccountWritePasswordUsingObjectId">
           <ValidationTechnicalProfiles>
-            <ValidationTechnicalProfile ReferenceId="REST-PasswordHistory"/>
+            <ValidationTechnicalProfile ReferenceId="REST-PasswordHistory" />
           </ValidationTechnicalProfiles>
         </TechnicalProfile>
 
-        <TechnicalProfile Id="AAD-UserReadUsingEmailAddress">
+        <!--Check the password reset claim-->
+        <TechnicalProfile Id="CheckPasswordResetOn">
+          <DisplayName>Unlink Facebook</DisplayName>
+          <Protocol Name="Proprietary" Handler="Web.TPEngine.Providers.ClaimsTransformationProtocolProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" />
+          <InputClaims>
+            <InputClaim ClaimTypeReferenceId="extension_passwordResetOn" DefaultValue="2020-01-01" />
+          </InputClaims>
           <OutputClaims>
-            <!--Sample: Read the 'password reset on' extension attribute -->
-            <OutputClaim ClaimTypeReferenceId="extension_passwordResetOn" />
+            <OutputClaim ClaimTypeReferenceId="isPasswordResetOnGreaterThanNow" />
+            <OutputClaim ClaimTypeReferenceId="salt" DefaultValue="12345" AlwaysUseDefaultValue="true" />
           </OutputClaims>
           <OutputClaimsTransformations>
             <OutputClaimsTransformation ReferenceId="SetCurrentDateTime" />
             <OutputClaimsTransformation ReferenceId="ComparePasswordResetOnWithCurrentDateTime" />
           </OutputClaimsTransformations>
+          <UseTechnicalProfileForSessionManagement ReferenceId="SM-Noop" />
+        </TechnicalProfile>
+      </TechnicalProfiles>
+    </ClaimsProvider>
+
+
+
+
+    <ClaimsProvider>
+      <DisplayName>Azure Active Directory</DisplayName>
+      <TechnicalProfiles>
+
+        <!--(AAD) Read the account by email address (used by password reset flow).
+        This technial profile is called by LocalAccountDiscoveryUsingEmailAddress-->
+        <TechnicalProfile Id="AAD-UserReadUsingEmailAddress">
+          <OutputClaims>
+            <OutputClaim ClaimTypeReferenceId="extension_passwordResetOn" />
+          </OutputClaims>
         </TechnicalProfile>
 
+        <!--(AAD) On creating new account, get the current date and set the passwordResetOn value-->
         <TechnicalProfile Id="AAD-UserWriteUsingLogonEmail">
           <InputClaimsTransformations>
-            <!--Sample: Get current date and time -->
             <InputClaimsTransformation ReferenceId="SetPasswordResetOn" />
           </InputClaimsTransformations>
           <PersistedClaims>
-            <!--Sample: On sign-up, set the 'password reset on' extension attribute with the current date and time -->
             <PersistedClaim ClaimTypeReferenceId="extension_passwordResetOn" />
           </PersistedClaims>
         </TechnicalProfile>
 
+        <!--(AAD) On resetting the password, get the current date and set the passwordResetOn value-->
         <TechnicalProfile Id="AAD-UserWritePasswordUsingObjectId">
           <InputClaimsTransformations>
-            <!--Sample: Get current date and time -->
             <InputClaimsTransformation ReferenceId="SetPasswordResetOn" />
           </InputClaimsTransformations>
           <PersistedClaims>
-            <!--Sample: On sign-up, set the 'password reset on' extension attribute with the current date and time -->
             <PersistedClaim ClaimTypeReferenceId="extension_passwordResetOn" />
           </PersistedClaims>
         </TechnicalProfile>
       </TechnicalProfiles>
     </ClaimsProvider>
 
-
   </ClaimsProviders>
   <UserJourneys>
-
     <UserJourney Id="SignUpOrSignIn">
       <OrchestrationSteps>
         <OrchestrationStep Order="2" Type="ClaimsExchange">
           <ClaimsExchanges>
-            <ClaimsExchange Id="SignUpWithLogonEmailExchange" TechnicalProfileReferenceId="LocalAccountSignUpWithLogonEmailWithPasswordHistory"/>
+            <ClaimsExchange Id="SignUpWithLogonEmailExchange" TechnicalProfileReferenceId="LocalAccountSignUpWithLogonEmailWithPasswordHistory" />
           </ClaimsExchanges>
         </OrchestrationStep>
       </OrchestrationSteps>
     </UserJourney>
+
 
     <UserJourney Id="PasswordResetWithHistory">
       <OrchestrationSteps>
         <OrchestrationStep Order="1" Type="ClaimsExchange">
           <ClaimsExchanges>
-            <ClaimsExchange Id="PasswordResetUsingEmailAddressExchange" TechnicalProfileReferenceId="LocalAccountDiscoveryUsingEmailAddress"/>
+            <ClaimsExchange Id="PasswordResetUsingEmailAddressExchange" TechnicalProfileReferenceId="LocalAccountDiscoveryUsingEmailAddress" />
+          </ClaimsExchanges>
+        </OrchestrationStep>
+
+        <OrchestrationStep Order="2" Type="ClaimsExchange">
+          <ClaimsExchanges>
+            <ClaimsExchange Id="CheckPasswordResetOn" TechnicalProfileReferenceId="CheckPasswordResetOn" />
           </ClaimsExchanges>
         </OrchestrationStep>
 
         <!-- Sample: This step present password reest error message -->
-        <OrchestrationStep Order="2" Type="ClaimsExchange">
-          <Preconditions>
+        <OrchestrationStep Order="3" Type="ClaimsExchange">
+          <!-- <Preconditions>
             <Precondition Type="ClaimEquals" ExecuteActionsIf="true">
               <Value>isPasswordResetOnGreaterThanNow</Value>
               <Value>False</Value>
               <Action>SkipThisOrchestrationStep</Action>
             </Precondition>
-          </Preconditions>
+          </Preconditions> -->
           <ClaimsExchanges>
-            <ClaimsExchange Id="SelfAsserted-PasswordResetError" TechnicalProfileReferenceId="SelfAsserted-PasswordResetError"/>
+            <ClaimsExchange Id="SelfAsserted-PasswordResetError" TechnicalProfileReferenceId="SelfAsserted-PasswordResetError" />
           </ClaimsExchanges>
         </OrchestrationStep>
-
-        <OrchestrationStep Order="3" Type="ClaimsExchange">
+        <OrchestrationStep Order="4" Type="ClaimsExchange">
           <ClaimsExchanges>
-            <ClaimsExchange Id="NewCredentials" TechnicalProfileReferenceId="LocalAccountWritePasswordUsingObjectId"/>
+            <ClaimsExchange Id="NewCredentials" TechnicalProfileReferenceId="LocalAccountWritePasswordUsingObjectId" />
           </ClaimsExchanges>
         </OrchestrationStep>
-        <OrchestrationStep Order="4" Type="SendClaims" CpimIssuerTechnicalProfileReferenceId="JwtIssuer"/>
+        <OrchestrationStep Order="5" Type="SendClaims" CpimIssuerTechnicalProfileReferenceId="JwtIssuer" />
       </OrchestrationSteps>
-      <ClientDefinition ReferenceId="DefaultWeb"/>
+      <ClientDefinition ReferenceId="DefaultWeb" />
     </UserJourney>
-
-
   </UserJourneys>
 </TrustFrameworkPolicy>

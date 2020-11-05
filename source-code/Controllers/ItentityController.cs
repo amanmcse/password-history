@@ -72,9 +72,6 @@ namespace password_history.Controllers
                 return StatusCode((int)HttpStatusCode.Conflict, new B2CResponseModel("The 'password' parameter is null or empty", HttpStatusCode.Conflict));
             }
 
-            // HASH the input password
-            inputClaims.password = GetPasswordHashString(inputClaims.password);
-
             // Trim the password
             if (inputClaims.password.Length > 55)
                 inputClaims.password = inputClaims.password.Substring(0, 55);
@@ -92,6 +89,7 @@ namespace password_history.Controllers
             {
                 _logger.LogInformation(ex.Message);
             }
+
             if (secret != null)
             {
                 try
@@ -148,6 +146,8 @@ namespace password_history.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex.ToString());
+                return StatusCode((int)HttpStatusCode.Conflict, new B2CResponseModel("Error (649): " + ex.Message, HttpStatusCode.Conflict));
+
             }
 
             return Ok();
