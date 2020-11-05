@@ -7,7 +7,7 @@
   </BasePolicy>
   <BuildingBlocks>
     <ClaimsSchema>
-      <!--Sample: Stores the message to dispaly to the user-->
+      <!--Sample: Stores the message to display to the user-->
       <ClaimType Id="userMessage">
         <DataType>string</DataType>
         <UserHelpText>Add help text here</UserHelpText>
@@ -53,9 +53,9 @@
         </OutputClaims>
       </ClaimsTransformation>
 
-      <!--Sample: Check if the  passwordResetOn + the tiem span is later than now.
-        If it's later, user can't reset the password (returns true)
-        If it's ealier, user can reset the password (return false)-->
+      <!--Sample: Check if the passwordResetOn + the time span is later than now.
+          If it's later, user can't reset the password (returns True)
+          If it's earlier, user can reset the password (return False)-->
       <ClaimsTransformation Id="ComparePasswordResetOnWithCurrentDateTime" TransformationMethod="DateTimeComparison">
         <InputClaims>
           <InputClaim ClaimTypeReferenceId="extension_passwordResetOn" TransformationClaimType="firstDateTime" />
@@ -63,7 +63,7 @@
         </InputClaims>
         <InputParameters>
           <InputParameter Id="operator" DataType="string" Value="later than" />
-          <!--Deom Action Required: Change the time span according to 60 or 90 days (in seconds)-->
+          <!-- Sample Action Required: Change the time span according to 60 or 90 days (in seconds)-->
           <InputParameter Id="timeSpanInSeconds" DataType="int" Value="80" />
         </InputParameters>
         <OutputClaims>
@@ -230,7 +230,7 @@
       <TechnicalProfiles>
 
         <!--(AAD) Read the account by email address (used by password reset flow).
-        This technial profile is called by LocalAccountDiscoveryUsingEmailAddress-->
+        This technical profile is called by LocalAccountDiscoveryUsingEmailAddress-->
         <TechnicalProfile Id="AAD-UserReadUsingEmailAddress">
           <OutputClaims>
             <OutputClaim ClaimTypeReferenceId="extension_passwordResetOn" />
@@ -286,7 +286,7 @@
           </ClaimsExchanges>
         </OrchestrationStep>
 
-        <!-- Sample: This step present password reest error message -->
+        <!-- Sample: This step present password reset error message -->
         <OrchestrationStep Order="3" Type="ClaimsExchange">
           <!-- <Preconditions>
             <Precondition Type="ClaimEquals" ExecuteActionsIf="true">
