@@ -153,20 +153,6 @@ namespace password_history.Controllers
             return Ok();
         }
 
-        public static byte[] GetPasswordHash(string inputString)
-        {
-            using (HashAlgorithm algorithm = SHA256.Create())
-                return algorithm.ComputeHash(Encoding.UTF8.GetBytes(inputString));
-        }
-
-        public static string GetPasswordHashString(string inputString)
-        {
-            StringBuilder sb = new StringBuilder();
-            foreach (byte b in GetPasswordHash(inputString))
-                sb.Append(b.ToString("X2"));
-
-            return sb.ToString();
-        }
     }
 
     public class InputClaimsModel
