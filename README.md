@@ -1,4 +1,4 @@
-# Band password history
+# Banned password history
 
 
 ## Setup your environment
